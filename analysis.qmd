@@ -23,27 +23,6 @@ raw_gov_rep <- read_tsv(
   show_col_types = FALSE
 ) |>
   filter(office == "Governor", party == "REP")
-
-gov_rep <- raw_gov_rep |>
-  summarize(total_votes = sum(votes, na.rm = TRUE), .by = candidate)
-```
-
-## Statewide Candidate Vote Totals
-
-```{r}
-gov_rep |>
-  mutate(candidate = fct_reorder(candidate, total_votes)) |>
-  ggplot(aes(x = total_votes, y = candidate)) +
-  geom_col(fill = "#c93335") +
-  scale_x_continuous(labels = label_comma()) +
-  labs(
-    title = "2026 Florida Republican Primary for Governor",
-    subtitle = "Official statewide vote totals by candidate",
-    x = "Total Votes",
-    y = NULL,
-    caption = "Source: Florida Division of Elections"
-  ) +
-  theme_minimal()
 ```
 
 ## County-Level Vote Margin Analysis
