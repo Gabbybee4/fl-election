@@ -1,0 +1,121 @@
+---
+title: "2026 Florida Republican Primary for Governor"
+format: html
+execute:
+  echo: false
+  message: false
+  warning: false
+---
+
+```{r}
+library(tidyverse)
+library(scales)
+library(sf)
+library(tigris)
+
+# Extract the precinct result files to a temporary directory and read them in
+txt_files <- unzip("2026-pri-outputofficial.zip", exdir = tempdir())
+
+raw_gov_rep <- read_tsv(
+  txt_files,
+  col_names = FALSE,
+  col_select = c(county = 2, office = 12, candidate = 15, party = 16, votes = 19),
+  show_col_types = FALSE
+) |>
+  filter(office == "Governor", party == "REP")
+
+gov_rep <- raw_gov_rep |>
+  summarize(total_votes = sum(votes, na.rm = TRUE), .by = candidate)
+```
+
+## Statewide Candidate Vote Totals
+
+```{r}
+gov_rep |>
+  mutate(candidate = fct_reorder(candidate, total_votes)) |>
+  ggplot(aes(x = total_votes, y = candidate)) +
+  geom_col(fill = "#c93335") +
+  scale_x_continuous(labels = label_comma()) +
+  labs(
+    title = "2026 Florida Republican Primary for Governor",
+    subtitle = "Official statewide vote totals by candidate",
+    x = "Total Votes",
+    y = NULL,
+    caption = "Source: Florida Division of Elections"
+  ) +
+  theme_minimal()
+```
+
+## County-Level Vote Margin Analysis
+
+```{r}
+# Calculate county vote shares and margin between top two candidates
+county_margins <- raw_gov_rep |>
+  summarize(votes = sum(votes, na.rm = TRUE), .by = c(county, candidate)) |>
+  mutate(
+    county_total = sum(votes),
+    vote_share = votes / county_total,
+    .by = county
+  ) |>
+  filter(candidate %in% c("Byron Donalds", "Jay Collins")) |>
+  select(county, county_total, candidate, vote_share) |>
+  pivot_wider(names_from = candidate, values_from = vote_share, values_fill = 0) |>
+  mutate(
+    margin = `Byron Donalds` - `Jay Collins`,
+    county_key = str_to_lower(county)
+  )
+```
+
+### Scatter Plot: Byron Donalds vs. Jay Collins Vote Share by County
+
+```{r}
+county_margins |>
+  ggplot(aes(x = `Jay Collins`, y = `Byron Donalds`, size = county_total, color = margin)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray50") +
+  geom_point(alpha = 0.8) +
+  scale_x_continuous(labels = label_percent()) +
+  scale_y_continuous(labels = label_percent()) +
+  scale_size_continuous(labels = label_comma(), name = "Total REP Votes") +
+  scale_color_gradient2(
+    low = "#2b5c8f",
+    mid = "#f7f7f7",
+    high = "#c93335",
+    midpoint = 0,
+    labels = label_percent(style_positive = "plus"),
+    name = "Donalds - Collins\nMargin"
+  ) +
+  labs(
+    title = "County Vote Share: Byron Donalds vs. Jay Collins",
+    subtitle = "Points above the dashed line indicate counties won by Byron Donalds",
+    x = "Jay Collins Vote Share",
+    y = "Byron Donalds Vote Share",
+    caption = "Source: Florida Division of Elections"
+  ) +
+  theme_minimal()
+```
+
+### Geographic Map: Vote Share Margin Across Florida Counties
+
+```{r}
+fl_counties_sf <- counties(state = "FL", cb = TRUE, progress_bar = FALSE) |>
+  mutate(county_key = str_to_lower(NAME)) |>
+  left_join(county_margins, by = "county_key")
+
+fl_counties_sf |>
+  ggplot(aes(fill = margin)) +
+  geom_sf(color = "white", linewidth = 0.2) +
+  scale_fill_gradient2(
+    low = "#2b5c8f",
+    mid = "#f7f7f7",
+    high = "#c93335",
+    midpoint = 0,
+    labels = label_percent(style_positive = "plus"),
+    name = "Vote Margin\n(Donalds - Collins)"
+  ) +
+  labs(
+    title = "2026 Republican Primary for Governor: County Vote Margin",
+    subtitle = "Difference in vote share between Byron Donalds (red) and Jay Collins (blue)",
+    caption = "Source: Florida Division of Elections & U.S. Census Bureau (TIGER/Line)"
+  ) +
+  theme_void()
+```
